@@ -17,8 +17,13 @@
 /public/hot
 /public/storage
 /storage/*.key
+/storage/logs
 /storage/pail
 /vendor
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Setup scripts (remove from gitignore if you want to track them)
+# setup-server.sh
+# generate-deploy-key.sh

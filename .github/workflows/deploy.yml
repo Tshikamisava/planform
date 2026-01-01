@@ -1,0 +1,47 @@
+🔥 Production-Ready Laravel SSH Deploy
+name: 🚀 Deploy Laravel to Hostking
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+
+            echo "📂 Go to app directory"
+            cd ${{ secrets.APP_PATH }}
+
+            echo "⬇️ Pull latest code"
+            git pull origin main
+
+            echo "📦 Install Composer dependencies"
+            composer install --no-dev --optimize-autoloader
+
+            echo "🔐 Set permissions"
+            chmod -R 775 storage bootstrap/cache
+
+            echo "🧹 Clear & rebuild caches"
+            php artisan optimize:clear
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+
+            echo "🗄️ Run migrations"
+            php artisan migrate --force
+
+            echo "✅ Deployment completed successfully"
