@@ -18,9 +18,17 @@ class RoleMiddleware
      */
     public function handle(Request $request, Closure $next, string $role)
     {
-        if (!Auth::check() || Auth::user()->role !== $role) {
-            abort(403, 'Unauthorized');
+        if (!Auth::check()) {
+            abort(401, 'Unauthorized');
         }
+
+        $user = Auth::user();
+        
+        // Check if user has the required role
+        if (!$user->hasRole($role)) {
+            abort(403, 'Unauthorized: You do not have the required role.');
+        }
+
         return $next($request);
     }
 }

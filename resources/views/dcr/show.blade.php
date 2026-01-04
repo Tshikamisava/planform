@@ -130,8 +130,8 @@
                     <!-- Attachments -->
                     @if($dcr->attachments && !empty(json_decode($dcr->attachments)))
                         <div class="mb-6">
-                            <h3 class="text-sm font-medium text-gray-500 mb-2">Attachments</h3>
-                            <div class="space-y-2">
+                            <h3 class="text-sm font-medium text-gray-500 mb-2">Original Attachments</h3>
+                            <div class="grid grid-cols-1 gap-2">
                                 @php
                                     $attachments = json_decode($dcr->attachments);
                                 @endphp
@@ -174,36 +174,110 @@
                         </div>
                     @endif
 
-                    <!-- Action Buttons (for recipients and admins) -->
-                    @if((auth()->user()->id === $dcr->recipient_id || auth()->user()->role === 'Admin') && $dcr->status === 'Pending')
+                    <!-- Implementation Details -->
+                    @if($dcr->implementation_notes)
+                        <div class="mb-6 border-t border-gray-100 pt-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-2">Implementation Details</h3>
+                            <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                                <p class="text-sm font-medium text-gray-500 mb-1">Implementation Notes</p>
+                                <p class="text-gray-900 whitespace-pre-wrap">{{ $dcr->implementation_notes }}</p>
+                            </div>
+                            
+                            @if($dcr->completed_attachments && !empty(json_decode($dcr->completed_attachments)))
+                                <p class="text-sm font-medium text-gray-500 mb-2">Completed Documents</p>
+                                <div class="grid grid-cols-1 gap-2">
+                                    @php
+                                        $compAttachments = json_decode($dcr->completed_attachments);
+                                    @endphp
+                                    @foreach($compAttachments as $attachment)
+                                        @php $filename = basename($attachment); @endphp
+                                        <div class="flex items-center justify-between bg-blue-50 rounded-lg p-3">
+                                            <div class="flex items-center">
+                                                <svg class="w-5 h-5 text-blue-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                </svg>
+                                                <span class="text-sm text-gray-900">{{ $filename }}</span>
+                                            </div>
+                                            <a href="{{ asset('storage/' . $attachment) }}" 
+                                               download="{{ $filename }}"
+                                               class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                                Download
+                                            </a>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
+                    @endif
+
+                     <!-- Action Buttons -->
+                    @if(!$dcr->is_locked)
                         <div class="border-t border-gray-200 pt-6">
-                            <h3 class="text-lg font-medium text-gray-900 mb-4">Actions</h3>
+                            <h3 class="text-lg font-medium text-gray-900 mb-4">Task Management</h3>
                             <div class="flex flex-wrap gap-3">
-                                @if(!$dcr->impact_rating)
-                                    <a href="{{ route('dcr.impact.rating', $dcr) }}" 
-                                       class="px-4 py-2 bg-yellow-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
-                                        Rate Impact
-                                    </a>
+                                <!-- Pending Actions (Rating & Approval) -->
+                                @if((auth()->user()->id === $dcr->recipient_id || auth()->user()->role === 'Admin') && $dcr->status === 'Pending')
+                                    @if(!$dcr->impact_rating)
+                                        <a href="{{ route('dcr.impact.rating', $dcr) }}" 
+                                           class="px-4 py-2 bg-yellow-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-yellow-700">
+                                            Rate Impact
+                                        </a>
+                                    @endif
+                                    <button onclick="showActionModal('approve')" 
+                                            class="px-4 py-2 bg-green-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-green-700">
+                                        Approve
+                                    </button>
+                                    <button onclick="showActionModal('reject')" 
+                                            class="px-4 py-2 bg-red-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-red-700">
+                                        Reject
+                                    </button>
+                                    @if($dcr->impact_rating)
+                                        <button onclick="showActionModal('approve-with-recs')" 
+                                                class="px-4 py-2 bg-purple-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-purple-700">
+                                            Approve with Recommendations
+                                        </button>
+                                    @endif
                                 @endif
-                                <button onclick="showActionModal('approve')" 
-                                        class="px-4 py-2 bg-green-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                                    Approve
-                                </button>
-                                <button onclick="showActionModal('reject')" 
-                                        class="px-4 py-2 bg-red-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                                    Reject
-                                </button>
-                                @if($dcr->impact_rating)
-                                    <button onclick="showActionModal('approve-with-recs')" 
-                                            class="px-4 py-2 bg-purple-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
-                                        Approve with Recommendations
+
+                                <!-- Reassignment (DOM/Admin only) -->
+                                @if((auth()->user()->role === 'DOM' || auth()->user()->role === 'Admin') && in_array($dcr->status, ['Pending', 'Approved']))
+                                    <button onclick="showActionModal('reassign')" 
+                                            class="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700">
+                                        Reassign Task
                                     </button>
                                 @endif
-                                <a href="{{ route('dcr.approval.dashboard') }}" 
-                                   class="px-4 py-2 bg-blue-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                    Approval Dashboard
+
+                                <!-- Implementation Tracking (Recipient Only) -->
+                                @if((auth()->user()->id === $dcr->recipient_id || auth()->user()->role === 'Admin') && $dcr->status === 'Approved')
+                                    <button onclick="showActionModal('complete')" 
+                                            class="px-4 py-2 bg-blue-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-blue-700">
+                                        Mark as Complete
+                                    </button>
+                                @endif
+
+                                <!-- Final Closure (DOM/Admin Only) -->
+                                @if((auth()->user()->role === 'DOM' || auth()->user()->role === 'Admin') && $dcr->status === 'Completed')
+                                    <button onclick="showActionModal('close')" 
+                                            class="px-4 py-2 bg-black border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-gray-800">
+                                        Verify & Close DCR
+                                    </button>
+                                @endif
+                                
+                                <a href="{{ route('dcr.dashboard') }}" 
+                                   class="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                    Return to List
                                 </a>
                             </div>
+                        </div>
+                    @else
+                        <div class="mt-8 p-4 bg-gray-100 border-l-4 border-gray-500 rounded text-gray-700">
+                            <div class="flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span class="font-bold">This record is archived and locked.</span>
+                            </div>
+                            <p class="text-sm mt-1">Further modifications are prohibited for audit purposes.</p>
                         </div>
                     @endif
 
@@ -228,63 +302,145 @@
         </div>
     </div>
 
-    <!-- Action Modal for Approve/Reject -->
-    <div id="actionModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden">
-        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modalTitle"></h3>
-                <div class="mt-2 px-7 py-3">
-                    <label class="block text-sm font-medium text-gray-700">Comments</label>
-                    <textarea id="actionComments" rows="3" 
-                              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                              placeholder="Add your comments (optional)..."></textarea>
+    <!-- Action Modal -->
+    <div id="actionModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white">
+            <form id="actionForm" action="" method="POST" enctype="multipart/form-data">
+                @csrf
+                <div class="mt-3">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900 border-b pb-2" id="modalTitle">Task Action</h3>
                     
-                    <div id="recommendationsSection" class="mt-4 hidden">
-                        <label class="block text-sm font-medium text-gray-700">Recommendations</label>
-                        <textarea id="actionRecommendations" rows="3" 
-                                  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                  placeholder="Add recommendations for implementation..."></textarea>
+                    <div class="mt-4 px-2 space-y-4">
+                        <!-- Standard Comments (for Approve/Reject) -->
+                        <div id="commentsSection">
+                            <label class="block text-sm font-medium text-gray-700">Comments</label>
+                            <textarea name="comments" rows="3" 
+                                      class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                      placeholder="Add your comments..."></textarea>
+                        </div>
+                        
+                        <!-- Recommendations (for Approve with Recs) -->
+                        <div id="recommendationsSection" class="hidden">
+                            <label class="block text-sm font-medium text-gray-700">Recommendations <span class="text-red-500">*</span></label>
+                            <textarea name="recommendations" rows="3" 
+                                      class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                      placeholder="Provide mandatory implementation steps..."></textarea>
+                        </div>
+
+                        <!-- Reassignment (Dropdown) -->
+                        <div id="reassignSection" class="hidden">
+                            <label class="block text-sm font-medium text-gray-700">New Recipient <span class="text-red-500">*</span></label>
+                            <select name="recipient_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="">-- Select User --</option>
+                                @foreach($users as $user)
+                                    <option value="{{ $user->id }}">{{ $user->name }} ({{ $user->role }})</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <!-- Completion Notes & Uploads -->
+                        <div id="completeSection" class="hidden">
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700">Implementation Notes <span class="text-red-500">*</span></label>
+                                <textarea name="implementation_notes" rows="3" 
+                                          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                          placeholder="Describe what has been changed..."></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Upload Evidence/Documents</label>
+                                <input type="file" name="completed_attachments[]" multiple 
+                                       class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                                <p class="text-xs text-gray-400 mt-1">PDF, Images, or Office docs allowed.</p>
+                            </div>
+                        </div>
+
+                        <!-- Closure Confirmation -->
+                        <div id="closeSection" class="hidden">
+                            <div class="p-3 bg-yellow-50 border border-yellow-200 rounded text-yellow-800 text-sm">
+                                <p class="font-bold">Final Verification Check:</p>
+                                <ul class="list-disc ml-4 mt-2">
+                                    <li>Implementation notes provided?</li>
+                                    <li>Evidence documents uploaded?</li>
+                                    <li>Physical drawings updated?</li>
+                                </ul>
+                                <p class="mt-3">Closing this DCR will <strong>lock</strong> the record permanently.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="items-center px-4 py-3 border-t mt-6 flex justify-end space-x-3">
+                        <button type="button" onclick="closeActionModal()" 
+                                class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition">
+                            Cancel
+                        </button>
+                        <button type="submit" id="confirmActionBtn" 
+                                class="px-4 py-2 rounded-md text-white font-medium shadow-sm transition">
+                            Confirm Action
+                        </button>
                     </div>
                 </div>
-                <div class="items-center px-4 py-3">
-                    <button onclick="closeActionModal()" 
-                            class="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 mr-2">
-                        Cancel
-                    </button>
-                    <button id="confirmAction" onclick="confirmAction()" 
-                            class="px-4 py-2 rounded-md text-white">
-                    </button>
-                </div>
-            </div>
+            </form>
         </div>
     </div>
 
     <script>
-        let currentAction = 'approve';
-
         function showActionModal(action) {
-            currentAction = action;
-            
             const modal = document.getElementById('actionModal');
+            const form = document.getElementById('actionForm');
             const title = document.getElementById('modalTitle');
-            const confirmBtn = document.getElementById('confirmAction');
-            const recommendationsSection = document.getElementById('recommendationsSection');
+            const btn = document.getElementById('confirmActionBtn');
+            const sections = ['commentsSection', 'recommendationsSection', 'reassignSection', 'completeSection', 'closeSection'];
             
-            if (action === 'approve') {
-                title.textContent = `Approve DCR {{ $dcr->dcr_id }}`;
-                confirmBtn.textContent = 'Approve';
-                confirmBtn.className = 'px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700';
-                recommendationsSection.classList.add('hidden');
-            } else if (action === 'reject') {
-                title.textContent = `Reject DCR {{ $dcr->dcr_id }}`;
-                confirmBtn.textContent = 'Reject';
-                confirmBtn.className = 'px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700';
-                recommendationsSection.classList.add('hidden');
-            } else if (action === 'approve-with-recs') {
-                title.textContent = `Approve DCR {{ $dcr->dcr_id }} with Recommendations`;
-                confirmBtn.textContent = 'Approve with Recs';
-                confirmBtn.className = 'px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700';
-                recommendationsSection.classList.remove('hidden');
+            // Hide all sections first
+            sections.forEach(s => document.getElementById(s).classList.add('hidden'));
+            
+            // Reset button classes
+            btn.className = 'px-4 py-2 rounded-md text-white font-medium shadow-sm transition';
+
+            switch(action) {
+                case 'approve':
+                    title.textContent = 'Approve DCR';
+                    form.action = "{{ route('dcr.approve', $dcr) }}";
+                    document.getElementById('commentsSection').classList.remove('hidden');
+                    btn.textContent = 'Approve DCR';
+                    btn.classList.add('bg-green-600', 'hover:bg-green-700');
+                    break;
+                case 'reject':
+                    title.textContent = 'Reject DCR';
+                    form.action = "{{ route('dcr.reject', $dcr) }}";
+                    document.getElementById('commentsSection').classList.remove('hidden');
+                    btn.textContent = 'Reject DCR';
+                    btn.classList.add('bg-red-600', 'hover:bg-red-700');
+                    break;
+                case 'approve-with-recs':
+                    title.textContent = 'Approve with Recommendations';
+                    form.action = "{{ route('dcr.approve.with.recommendations', $dcr) }}";
+                    document.getElementById('commentsSection').classList.remove('hidden');
+                    document.getElementById('recommendationsSection').classList.remove('hidden');
+                    btn.textContent = 'Approve & Task';
+                    btn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+                    break;
+                case 'reassign':
+                    title.textContent = 'Reassign DCR Recipient';
+                    form.action = "{{ route('dcr.reassign', $dcr) }}";
+                    document.getElementById('reassignSection').classList.remove('hidden');
+                    btn.textContent = 'Reassign Task';
+                    btn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+                    break;
+                case 'complete':
+                    title.textContent = 'Mark Implementation as Complete';
+                    form.action = "{{ route('dcr.complete', $dcr) }}";
+                    document.getElementById('completeSection').classList.remove('hidden');
+                    btn.textContent = 'Submit Completion';
+                    btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                    break;
+                case 'close':
+                    title.textContent = 'Final DCR Verification & Closure';
+                    form.action = "{{ route('dcr.close', $dcr) }}";
+                    document.getElementById('closeSection').classList.remove('hidden');
+                    btn.textContent = 'Verify & Close';
+                    btn.classList.add('bg-black', 'hover:bg-gray-800');
+                    break;
             }
             
             modal.classList.remove('hidden');
@@ -292,51 +448,7 @@
 
         function closeActionModal() {
             document.getElementById('actionModal').classList.add('hidden');
-            document.getElementById('actionComments').value = '';
-        }
-
-        function confirmAction() {
-            const comments = document.getElementById('actionComments').value;
-            const recommendations = document.getElementById('actionRecommendations') ? document.getElementById('actionRecommendations').value : '';
-            
-            // Make AJAX call to update the DCR status
-            let route;
-            if (currentAction === 'approve') {
-                route = `/dcr/{{ $dcr->id }}/approve`;
-            } else if (currentAction === 'reject') {
-                route = `/dcr/{{ $dcr->id }}/reject`;
-            } else if (currentAction === 'approve-with-recs') {
-                route = `/dcr/{{ $dcr->id }}/approve-with-recommendations`;
-            }
-            
-            fetch(route, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({
-                    comments: comments,
-                    recommendations: recommendations
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast(data.message, 'success');
-                    closeActionModal();
-                    // Refresh the page after a short delay
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1500);
-                } else {
-                    showToast(data.message || 'An error occurred', 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showToast('An error occurred while processing the request', 'error');
-            });
+            document.getElementById('actionForm').reset();
         }
     </script>
 </x-app-layout>

@@ -35,6 +35,8 @@ class ReportController extends Controller
         $totalDcrs = $query->count();
         $approvedDcrs = $query->where('status', 'Approved')->count();
         $rejectedDcrs = $query->where('status', 'Rejected')->count();
+        $completedDcrs = $query->where('status', 'Completed')->count();
+        $closedDcrs = $query->where('status', 'Closed')->count();
         $pendingDcrs = $query->where('status', 'Pending')->count();
         
         // Impact rating statistics
@@ -45,7 +47,7 @@ class ReportController extends Controller
             
         // Monthly trends
         $monthlyTrends = Dcr::whereBetween('created_at', [$startDate, $endDate])
-            ->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month, status, COUNT(*) as count')
+            ->selectRaw('strftime("%Y-%m", created_at) as month, status, COUNT(*) as count')
             ->groupBy('month', 'status')
             ->orderBy('month')
             ->get();
@@ -65,13 +67,13 @@ class ReportController extends Controller
             
         // Average processing time
         $avgProcessingTime = Dcr::whereBetween('created_at', [$startDate, $endDate])
-            ->whereIn('status', ['Approved', 'Rejected'])
-            ->selectRaw('AVG(DATEDIFF(updated_at, created_at)) as avg_days')
+            ->whereIn('status', ['Approved', 'Rejected', 'Completed', 'Closed'])
+            ->selectRaw('AVG(julianday(updated_at) - julianday(created_at)) as avg_days')
             ->first();
             
         return view('reports.dcr-summary', compact(
             'startDate', 'endDate',
-            'totalDcrs', 'approvedDcrs', 'rejectedDcrs', 'pendingDcrs',
+            'totalDcrs', 'approvedDcrs', 'rejectedDcrs', 'completedDcrs', 'closedDcrs', 'pendingDcrs',
             'impactStats', 'monthlyTrends', 'topRequestTypes', 'escalatedDcrs',
             'avgProcessingTime'
         ));
@@ -112,8 +114,8 @@ class ReportController extends Controller
             
         // Processing time by impact
         $processingTimeByImpact = Dcr::whereBetween('created_at', [$startDate, $endDate])
-            ->whereIn('status', ['Approved', 'Rejected'])
-            ->selectRaw('impact_rating, AVG(DATEDIFF(updated_at, created_at)) as avg_days')
+            ->whereIn('status', ['Approved', 'Rejected', 'Completed', 'Closed'])
+            ->selectRaw('impact_rating, AVG(julianday(updated_at) - julianday(created_at)) as avg_days')
             ->groupBy('impact_rating')
             ->get();
             
@@ -138,7 +140,7 @@ class ReportController extends Controller
             }])
             ->withCount(['assignedDcrs as reviewed_count' => function($query) use ($startDate, $endDate) {
                 $query->whereBetween('updated_at', [$startDate, $endDate])
-                      ->whereIn('status', ['Approved', 'Rejected']);
+                      ->whereIn('status', ['Approved', 'Rejected', 'Completed', 'Closed']);
             }])
             ->where('role', '!=', 'Admin')
             ->get();
@@ -164,11 +166,11 @@ class ReportController extends Controller
             
         // Processing time metrics
         $processingMetrics = Dcr::whereBetween('created_at', [$startDate, $endDate])
-            ->whereIn('status', ['Approved', 'Rejected'])
+            ->whereIn('status', ['Approved', 'Rejected', 'Completed', 'Closed'])
             ->selectRaw('
-                AVG(DATEDIFF(updated_at, created_at)) as avg_processing_time,
-                MIN(DATEDIFF(updated_at, created_at)) as min_processing_time,
-                MAX(DATEDIFF(updated_at, created_at)) as max_processing_time,
+                AVG(julianday(updated_at) - julianday(created_at)) as avg_processing_time,
+                MIN(julianday(updated_at) - julianday(created_at)) as min_processing_time,
+                MAX(julianday(updated_at) - julianday(created_at)) as max_processing_time,
                 COUNT(*) as total_processed
             ')
             ->first();

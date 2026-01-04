@@ -18,10 +18,15 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
+        'uuid',
         'name',
         'email',
         'password',
-        'role',
+        'phone',
+        'department',
+        'position',
+        'is_active',
+        'last_login_at',
     ];
 
     /**
@@ -39,6 +44,16 @@ class User extends Authenticatable
      *
      * @return array<string, string>
      */
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'is_active' => 'boolean',
+            'last_login_at' => 'datetime',
+        ];
+    }
+
     public function dcrs()
     {
         return $this->hasMany(Dcr::class, 'author_id');
@@ -49,11 +64,92 @@ class User extends Authenticatable
         return $this->hasMany(Dcr::class, 'recipient_id');
     }
 
-    protected function casts(): array
+    public function roles()
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
+        return $this->belongsToMany(Role::class, 'user_roles')
+            ->withPivot(['assigned_by', 'assigned_at', 'expires_at', 'is_active'])
+            ->withTimestamps();
+    }
+
+    public function activeRoles()
+    {
+        return $this->belongsToMany(Role::class, 'user_roles')
+            ->wherePivot('is_active', true)
+            ->where(function ($query) {
+                $query->whereNull('expires_at')
+                      ->orWhere('expires_at', '>', now());
+            })
+            ->withPivot(['assigned_by', 'assigned_at', 'expires_at', 'is_active'])
+            ->withTimestamps();
+    }
+
+    public function hasRole($roleName)
+    {
+        return $this->activeRoles()->where('name', $roleName)->exists();
+    }
+
+    public function hasAnyRole(array $roleNames)
+    {
+        return $this->activeRoles()->whereIn('name', $roleNames)->exists();
+    }
+
+    public function getHighestRoleLevel()
+    {
+        return $this->activeRoles()->max('level') ?? 0;
+    }
+
+    public function isAdministrator()
+    {
+        return $this->hasRole('admin');
+    }
+
+    public function isDecisionMaker()
+    {
+        return $this->hasRole('dom');
+    }
+
+    public function isRecipient()
+    {
+        return $this->hasRole('recipient');
+    }
+
+    public function isAuthor()
+    {
+        return $this->hasRole('author');
+    }
+
+    public function impactAssessments()
+    {
+        return $this->hasMany(ImpactAssessment::class, 'assessor_id');
+    }
+
+    public function approvals()
+    {
+        return $this->hasMany(Approval::class, 'approver_id');
+    }
+
+    public function documents()
+    {
+        return $this->hasMany(Document::class, 'uploaded_by');
+    }
+
+    public function notifications()
+    {
+        return $this->hasMany(Notification::class);
+    }
+
+    public function unreadNotifications()
+    {
+        return $this->notifications()->where('status', '!=', 'Read');
+    }
+
+    public function auditLogs()
+    {
+        return $this->hasMany(AuditLog::class);
+    }
+
+    public function updateLastLogin()
+    {
+        $this->update(['last_login_at' => now()]);
     }
 }

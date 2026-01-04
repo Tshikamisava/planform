@@ -24,7 +24,7 @@
                     </div>
                     
                     <!-- Quick Stats -->
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
                         <div class="bg-blue-50 rounded-lg p-4">
                             <div class="text-2xl font-bold text-blue-600">{{ $totalDcrs }}</div>
                             <div class="text-sm text-gray-600">Total DCRs</div>
@@ -33,6 +33,16 @@
                             <div class="text-2xl font-bold text-green-600">{{ $approvedDcrs }}</div>
                             <div class="text-sm text-gray-600">Approved</div>
                             <div class="text-xs text-gray-500">{{ $totalDcrs > 0 ? round(($approvedDcrs / $totalDcrs) * 100, 1) : 0 }}%</div>
+                        </div>
+                        <div class="bg-indigo-50 rounded-lg p-4">
+                            <div class="text-2xl font-bold text-indigo-600">{{ $completedDcrs }}</div>
+                            <div class="text-sm text-gray-600">Completed</div>
+                            <div class="text-xs text-gray-500">{{ $totalDcrs > 0 ? round(($completedDcrs / $totalDcrs) * 100, 1) : 0 }}%</div>
+                        </div>
+                        <div class="bg-black bg-opacity-5 rounded-lg p-4">
+                            <div class="text-2xl font-bold text-gray-900">{{ $closedDcrs }}</div>
+                            <div class="text-sm text-gray-600">Closed</div>
+                            <div class="text-xs text-gray-500">{{ $totalDcrs > 0 ? round(($closedDcrs / $totalDcrs) * 100, 1) : 0 }}%</div>
                         </div>
                         <div class="bg-red-50 rounded-lg p-4">
                             <div class="text-2xl font-bold text-red-600">{{ $rejectedDcrs }}</div>
@@ -133,11 +143,13 @@
                                     </div>
                                     <div class="flex space-x-4 text-xs">
                                         @foreach($trends as $trend)
-                                            <span class="px-2 py-1 rounded-full
+                                            <span class="px-2 py-1 rounded-full whitespace-nowrap mb-1
                                                 {{ $trend->status === 'Approved' ? 'bg-green-100 text-green-800' : 
                                                    ($trend->status === 'Rejected' ? 'bg-red-100 text-red-800' : 
+                                                   ($trend->status === 'Completed' ? 'bg-blue-100 text-blue-800' : 
+                                                   ($trend->status === 'Closed' ? 'bg-gray-800 text-white' : 
                                                    ($trend->status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 
-                                                   'bg-gray-100 text-gray-800')) }}">
+                                                   'bg-gray-100 text-gray-800')))) }}">
                                                 {{ $trend->status }}: {{ $trend->count }}
                                             </span>
                                         @endforeach
@@ -189,8 +201,10 @@
                                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                                                 {{ $dcr->status === 'Approved' ? 'bg-green-100 text-green-800' : 
                                                    ($dcr->status === 'Rejected' ? 'bg-red-100 text-red-800' : 
+                                                   ($dcr->status === 'Completed' ? 'bg-blue-100 text-blue-800' : 
+                                                   ($dcr->status === 'Closed' ? 'bg-gray-800 text-white' : 
                                                    ($dcr->status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 
-                                                   'bg-gray-100 text-gray-800')) }}">
+                                                   'bg-gray-100 text-gray-800')))) }}">
                                                 {{ $dcr->status }}
                                             </span>
                                         </td>
@@ -210,7 +224,7 @@
                                             {{ $dcr->created_at->toFormattedDateString() }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            @if(in_array($dcr->status, ['Approved', 'Rejected']))
+                                            @if(in_array($dcr->status, ['Approved', 'Rejected', 'Completed', 'Closed']))
                                                 {{ $dcr->updated_at->diffInDays($dcr->created_at) }}
                                             @else
                                                 -

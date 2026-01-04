@@ -28,7 +28,11 @@
                 @endisset
 
                 <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-200 p-6">
-                    {{ $slot }}
+                    @if(isset($slot))
+                        {{ $slot }}
+                    @else
+                        @yield('content')
+                    @endif
                 </main>
             </div>
         </div>
