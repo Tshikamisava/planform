@@ -3,12 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Dcr extends Model
 {
-    use SoftDeletes;
-
     protected $fillable = [
         'dcr_id',
         'title',
@@ -18,6 +15,7 @@ class Dcr extends Model
         'due_date',
         'status',
         'impact',
+        'impact_rating',
         'impact_summary',
         'recommendations',
         'author_id',

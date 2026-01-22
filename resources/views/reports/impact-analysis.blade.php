@@ -107,9 +107,7 @@
                                 <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                     <div class="flex items-center">
                                         <span class="w-3 h-3 rounded-full mr-3 
-                                            {{ $time->impact_rating === 'High' ? 'bg-red-500' : 
-                                               ($time->impact_rating === 'Medium' ? 'bg-yellow-500' : 
-                                               ($time->impact_rating === 'Low' ? 'bg-green-500' : 'bg-gray-500') }}">
+                                            {{ $time->impact_rating === 'High' ? 'bg-red-500' : ($time->impact_rating === 'Medium' ? 'bg-yellow-500' : ($time->impact_rating === 'Low' ? 'bg-green-500' : 'bg-gray-500')) }}">
                                         </span>
                                         <span class="text-sm font-medium">{{ $time->impact_rating ?? 'Not Rated' }}</span>
                                     </div>

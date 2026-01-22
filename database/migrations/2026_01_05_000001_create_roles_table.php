@@ -60,6 +60,16 @@ return new class extends Migration
             ],
             [
                 'uuid' => Str::uuid(),
+                'name' => 'viewer',
+                'display_name' => 'Viewer',
+                'description' => 'Can view change requests (read-only access)',
+                'level' => 1,
+                'is_system' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'uuid' => Str::uuid(),
                 'name' => 'admin',
                 'display_name' => 'Administrator',
                 'description' => 'Full system access and user management',

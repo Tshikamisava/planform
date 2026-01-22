@@ -28,7 +28,42 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        // Update last login timestamp
+        $request->user()->update(['last_login_at' => now()]);
+
+        // Redirect based on user role
+        $defaultRoute = $this->getDefaultRouteForUser($request->user());
+
+        return redirect()->intended($defaultRoute);
+    }
+
+    /**
+     * Get the default route for a user based on their role
+     */
+    protected function getDefaultRouteForUser($user): string
+    {
+        // Admin users go to the main dashboard
+        if ($user->isAdministrator()) {
+            return route('dashboard', absolute: false);
+        }
+
+        // DOM users go to their approval dashboard
+        if ($user->isDecisionMaker()) {
+            return route('dcr.manager.dashboard', absolute: false);
+        }
+
+        // Recipient users go to their tasks
+        if ($user->isRecipient()) {
+            return route('dcr.my-tasks', absolute: false);
+        }
+
+        // Author users go to DCR dashboard
+        if ($user->isAuthor()) {
+            return route('dcr.dashboard', absolute: false);
+        }
+
+        // Default fallback to main dashboard
+        return route('dashboard', absolute: false);
     }
 
     /**

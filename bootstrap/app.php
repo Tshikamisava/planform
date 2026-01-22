@@ -12,11 +12,16 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'admin' => \App\Http\Middleware\AdminMiddleware::class,
-            'role' => \App\Http\Middleware\RoleMiddleware::class,
-            'permission' => \App\Http\Middleware\PermissionMiddleware::class,
-            'permissions' => \App\Http\Middleware\MultiPermissionMiddleware::class,
+            'role' => \App\Http\Middleware\CheckRole::class,
+            'permission' => \App\Http\Middleware\CheckPermission::class,
+            'active' => \App\Http\Middleware\EnsureUserIsActive::class,
         ]);
+        
+        // Add performance tracking middleware
+        $middleware->appendToGroup('web', \App\Http\Middleware\TrackResponseTime::class);
+        
+        // Add EnsureUserIsActive to web middleware group
+        $middleware->appendToGroup('web', \App\Http\Middleware\EnsureUserIsActive::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

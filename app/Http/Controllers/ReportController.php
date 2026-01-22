@@ -4,9 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\Dcr;
 use App\Models\User;
+use App\Models\ChangeRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Maatwebsite\Excel\Facades\Excel;
+use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Illuminate\Support\Collection;
 
 class ReportController extends Controller
 {
@@ -29,54 +37,60 @@ class ReportController extends Controller
         $startDate = $request->get('start_date', now()->subMonths(3)->format('Y-m-d'));
         $endDate = $request->get('end_date', now()->format('Y-m-d'));
         
-        $query = Dcr::whereBetween('created_at', [$startDate, $endDate]);
+        // Cache key based on date range
+        $cacheKey = "dcr_summary_{$startDate}_{$endDate}";
         
-        // Overall statistics
-        $totalDcrs = $query->count();
-        $approvedDcrs = $query->where('status', 'Approved')->count();
-        $rejectedDcrs = $query->where('status', 'Rejected')->count();
-        $completedDcrs = $query->where('status', 'Completed')->count();
-        $closedDcrs = $query->where('status', 'Closed')->count();
-        $pendingDcrs = $query->where('status', 'Pending')->count();
+        // Cache for 1 hour with tags for easy invalidation
+        $reportData = Cache::tags(['dcr_reports'])->remember($cacheKey, 3600, function () use ($startDate, $endDate) {
+            $query = ChangeRequest::whereBetween('created_at', [$startDate, $endDate]);
+            
+            // Overall statistics
+            $totalDcrs = $query->count();
+            $approvedDcrs = (clone $query)->where('status', 'Approved')->count();
+            $rejectedDcrs = (clone $query)->where('status', 'Rejected')->count();
+            $completedDcrs = (clone $query)->where('status', 'Completed')->count();
+            $closedDcrs = (clone $query)->where('status', 'Closed')->count();
+            $pendingDcrs = (clone $query)->where('status', 'Pending')->count();
+            
+            // Impact rating statistics
+            $impactStats = ChangeRequest::whereBetween('created_at', [$startDate, $endDate])
+                ->selectRaw('impact, COUNT(*) as count')
+                ->groupBy('impact')
+                ->get();
+                
+            // Monthly trends
+            $monthlyTrends = ChangeRequest::whereBetween('created_at', [$startDate, $endDate])
+                ->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month, status, COUNT(*) as count')
+                ->groupBy('month', 'status')
+                ->orderBy('month')
+                ->get();
+                
+            // Top priorities
+            $topPriorities = ChangeRequest::whereBetween('created_at', [$startDate, $endDate])
+                ->selectRaw('priority, COUNT(*) as count')
+                ->groupBy('priority')
+                ->orderBy('count', 'desc')
+                ->get();
+                
+            // Escalation statistics
+            $escalatedDcrs = ChangeRequest::whereBetween('created_at', [$startDate, $endDate])
+                ->where('impact', 'High')
+                ->count();
+                
+            // Average processing time (turnaround time)
+            $avgProcessingTime = ChangeRequest::whereBetween('created_at', [$startDate, $endDate])
+                ->whereIn('status', ['Approved', 'Rejected', 'Completed', 'Closed'])
+                ->selectRaw('AVG(DATEDIFF(updated_at, created_at)) as avg_days')
+                ->first();
+            
+            return compact(
+                'totalDcrs', 'approvedDcrs', 'rejectedDcrs', 'completedDcrs', 'closedDcrs', 'pendingDcrs',
+                'impactStats', 'monthlyTrends', 'topPriorities', 'escalatedDcrs',
+                'avgProcessingTime'
+            );
+        });
         
-        // Impact rating statistics
-        $impactStats = Dcr::whereBetween('created_at', [$startDate, $endDate])
-            ->selectRaw('impact_rating, COUNT(*) as count')
-            ->groupBy('impact_rating')
-            ->get();
-            
-        // Monthly trends
-        $monthlyTrends = Dcr::whereBetween('created_at', [$startDate, $endDate])
-            ->selectRaw('strftime("%Y-%m", created_at) as month, status, COUNT(*) as count')
-            ->groupBy('month', 'status')
-            ->orderBy('month')
-            ->get();
-            
-        // Top request types
-        $topRequestTypes = Dcr::whereBetween('created_at', [$startDate, $endDate])
-            ->selectRaw('request_type, COUNT(*) as count')
-            ->groupBy('request_type')
-            ->orderBy('count', 'desc')
-            ->limit(10)
-            ->get();
-            
-        // Escalation statistics
-        $escalatedDcrs = Dcr::whereBetween('created_at', [$startDate, $endDate])
-            ->where('auto_escalated', true)
-            ->count();
-            
-        // Average processing time
-        $avgProcessingTime = Dcr::whereBetween('created_at', [$startDate, $endDate])
-            ->whereIn('status', ['Approved', 'Rejected', 'Completed', 'Closed'])
-            ->selectRaw('AVG(julianday(updated_at) - julianday(created_at)) as avg_days')
-            ->first();
-            
-        return view('reports.dcr-summary', compact(
-            'startDate', 'endDate',
-            'totalDcrs', 'approvedDcrs', 'rejectedDcrs', 'completedDcrs', 'closedDcrs', 'pendingDcrs',
-            'impactStats', 'monthlyTrends', 'topRequestTypes', 'escalatedDcrs',
-            'avgProcessingTime'
-        ));
+        return view('reports.dcr-summary', array_merge($reportData, compact('startDate', 'endDate')));
     }
 
     /**
@@ -115,7 +129,7 @@ class ReportController extends Controller
         // Processing time by impact
         $processingTimeByImpact = Dcr::whereBetween('created_at', [$startDate, $endDate])
             ->whereIn('status', ['Approved', 'Rejected', 'Completed', 'Closed'])
-            ->selectRaw('impact_rating, AVG(julianday(updated_at) - julianday(created_at)) as avg_days')
+            ->selectRaw('impact_rating, AVG(DATEDIFF(updated_at, created_at)) as avg_days')
             ->groupBy('impact_rating')
             ->get();
             
@@ -168,9 +182,9 @@ class ReportController extends Controller
         $processingMetrics = Dcr::whereBetween('created_at', [$startDate, $endDate])
             ->whereIn('status', ['Approved', 'Rejected', 'Completed', 'Closed'])
             ->selectRaw('
-                AVG(julianday(updated_at) - julianday(created_at)) as avg_processing_time,
-                MIN(julianday(updated_at) - julianday(created_at)) as min_processing_time,
-                MAX(julianday(updated_at) - julianday(created_at)) as max_processing_time,
+                AVG(DATEDIFF(updated_at, created_at)) as avg_processing_time,
+                MIN(DATEDIFF(updated_at, created_at)) as min_processing_time,
+                MAX(DATEDIFF(updated_at, created_at)) as max_processing_time,
                 COUNT(*) as total_processed
             ')
             ->first();
@@ -291,52 +305,106 @@ class ReportController extends Controller
     }
 
     /**
-     * Export report to CSV.
+     * Export report to CSV, Excel, or PDF.
      */
     public function export(Request $request, $type)
     {
         $startDate = $request->get('start_date', now()->subMonths(3)->format('Y-m-d'));
         $endDate = $request->get('end_date', now()->format('Y-m-d'));
+        $format = $request->get('format', 'csv'); // csv, excel, pdf
         
-        $filename = "dcr-report-{$type}-{$startDate}-to-{$endDate}.csv";
+        // Get data based on report type
+        $data = match($type) {
+            'summary' => $this->getSummaryData($startDate, $endDate),
+            'impact' => $this->getImpactData($startDate, $endDate),
+            'performance' => $this->getPerformanceData($startDate, $endDate),
+            'compliance' => $this->getComplianceData($startDate, $endDate),
+            default => null
+        };
         
-        switch($type) {
-            case 'summary':
-                $data = $this->getSummaryData($startDate, $endDate);
-                break;
-            case 'impact':
-                $data = $this->getImpactData($startDate, $endDate);
-                break;
-            case 'performance':
-                $data = $this->getPerformanceData($startDate, $endDate);
-                break;
-            case 'compliance':
-                $data = $this->getComplianceData($startDate, $endDate);
-                break;
-            default:
-                return redirect()->back()->with('error', 'Invalid report type');
+        if (!$data) {
+            return redirect()->back()->with('error', 'Invalid report type');
         }
         
+        $filename = "dcr-report-{$type}-{$startDate}-to-{$endDate}";
+        
+        // Export based on format
+        return match($format) {
+            'excel' => $this->exportToExcel($data, $filename, $type),
+            'pdf' => $this->exportToPdf($data, $filename, $type, $startDate, $endDate),
+            default => $this->exportToCsv($data, $filename)
+        };
+    }
+    
+    /**
+     * Export to CSV format.
+     */
+    private function exportToCsv($data, $filename)
+    {
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'Content-Disposition' => "attachment; filename=\"{$filename}.csv\"",
         ];
         
         return response()->stream(function() use ($data) {
             $file = fopen('php://output', 'w');
             
-            // Header row
             if (!empty($data)) {
                 fputcsv($file, array_keys($data[0]));
-            }
-            
-            // Data rows
-            foreach ($data as $row) {
-                fputcsv($file, $row);
+                foreach ($data as $row) {
+                    fputcsv($file, $row);
+                }
             }
             
             fclose($file);
         }, 200, $headers);
+    }
+    
+    /**
+     * Export to Excel format.
+     */
+    private function exportToExcel($data, $filename, $type)
+    {
+        $export = new class($data, ucfirst($type) . ' Report') implements FromCollection, WithHeadings, ShouldAutoSize {
+            private $data;
+            private $title;
+            
+            public function __construct($data, $title) {
+                $this->data = $data;
+                $this->title = $title;
+            }
+            
+            public function collection()
+            {
+                return new Collection($this->data);
+            }
+            
+            public function headings(): array
+            {
+                return !empty($this->data) ? array_keys($this->data[0]) : [];
+            }
+        };
+        
+        return Excel::download($export, $filename . '.xlsx');
+    }
+    
+    /**
+     * Export to PDF format.
+     */
+    private function exportToPdf($data, $filename, $type, $startDate, $endDate)
+    {
+        $pdf = Pdf::loadView('reports.pdf.export', [
+            'data' => $data,
+            'type' => $type,
+            'title' => ucfirst($type) . ' Report',
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'generatedAt' => now()->format('Y-m-d H:i:s')
+        ]);
+        
+        $pdf->setPaper('a4', 'landscape');
+        
+        return $pdf->download($filename . '.pdf');
     }
 
     /**

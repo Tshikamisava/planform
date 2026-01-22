@@ -4,18 +4,22 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Role;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
     /**
+
      * Display a listing of users.
      */
     public function index()
     {
-        $users = User::orderBy('created_at', 'desc')->paginate(10);
+        $users = User::with('activeRoles')->orderBy('name')->paginate(20);
         return view('admin.users.index', compact('users'));
     }
 
@@ -24,7 +28,8 @@ class UserController extends Controller
      */
     public function create()
     {
-        return view('admin.users.create');
+        $roles = Role::all();
+        return view('admin.users.create', compact('roles'));
     }
 
     /**
@@ -32,19 +37,37 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => ['required', 'string', Rule::in(['Author', 'Recipient', 'DOM', 'Admin'])],
+            'department' => ['nullable', 'string', 'max:255'],
+            'position' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'roles' => ['required', 'array', 'min:1'],
+            'roles.*' => ['exists:roles,id'],
         ]);
 
-        User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => $request->role,
+        $user = User::create([
+            'uuid' => Str::uuid(),
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']),
+            'department' => $validated['department'] ?? null,
+            'position' => $validated['position'] ?? null,
+            'phone' => $validated['phone'] ?? null,
+            'is_active' => true,
+            'email_verified_at' => now(),
         ]);
+
+        // Assign roles
+        foreach ($validated['roles'] as $roleId) {
+            $user->roles()->attach($roleId, [
+                'assigned_by' => Auth::id(),
+                'assigned_at' => now(),
+                'is_active' => true,
+            ]);
+        }
 
         return redirect()->route('admin.users.index')
             ->with('success', 'User created successfully!');
@@ -55,7 +78,9 @@ class UserController extends Controller
      */
     public function edit(User $user)
     {
-        return view('admin.users.edit', compact('user'));
+        $roles = Role::all();
+        $userRoleIds = $user->roles->pluck('id')->toArray();
+        return view('admin.users.edit', compact('user', 'roles', 'userRoleIds'));
     }
 
     /**
@@ -63,16 +88,24 @@ class UserController extends Controller
      */
     public function update(Request $request, User $user)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
-            'role' => ['required', 'string', Rule::in(['Author', 'Recipient', 'DOM', 'Admin'])],
+            'department' => ['nullable', 'string', 'max:255'],
+            'position' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'is_active' => ['boolean'],
+            'roles' => ['required', 'array', 'min:1'],
+            'roles.*' => ['exists:roles,id'],
         ]);
 
         $user->update([
-            'name' => $request->name,
-            'email' => $request->email,
-            'role' => $request->role,
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'department' => $validated['department'] ?? null,
+            'position' => $validated['position'] ?? null,
+            'phone' => $validated['phone'] ?? null,
+            'is_active' => $validated['is_active'] ?? true,
         ]);
 
         // Update password if provided
@@ -85,6 +118,19 @@ class UserController extends Controller
             ]);
         }
 
+        // Update roles - remove old ones and add new ones
+        $user->roles()->detach();
+        foreach ($validated['roles'] as $roleId) {
+            $user->roles()->attach($roleId, [
+                'assigned_by' => Auth::id(),
+                'assigned_at' => now(),
+                'is_active' => true,
+            ]);
+        }
+
+        // Clear role cache
+        $user->clearRoleCache();
+
         return redirect()->route('admin.users.index')
             ->with('success', 'User updated successfully!');
     }
@@ -95,14 +141,40 @@ class UserController extends Controller
     public function destroy(User $user)
     {
         // Prevent deletion of the currently authenticated admin
-        if ($user->id === auth()->id()) {
+        if ($user->id === Auth::id()) {
             return redirect()->route('admin.users.index')
                 ->with('error', 'You cannot delete your own account!');
         }
 
-        $user->delete();
+        // Deactivate instead of delete
+        $user->update(['is_active' => false]);
+        $user->clearRoleCache();
 
         return redirect()->route('admin.users.index')
-            ->with('success', 'User deleted successfully!');
+            ->with('success', 'User deactivated successfully!');
+    }
+
+    /**
+     * Toggle user active status.
+     */
+    public function toggleActive(User $user)
+    {
+        // Don't allow deactivating yourself
+        if ($user->id === Auth::id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot deactivate your own account.'
+            ], 422);
+        }
+
+        $user->update(['is_active' => !$user->is_active]);
+        $user->clearRoleCache();
+
+        return response()->json([
+            'success' => true,
+            'is_active' => $user->is_active,
+            'message' => 'User status updated successfully.'
+        ]);
     }
 }
+

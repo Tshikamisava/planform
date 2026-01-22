@@ -4,6 +4,8 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class ChangeRequestStoreRequest extends FormRequest
 {
@@ -12,7 +14,9 @@ class ChangeRequestStoreRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return auth()->check() && auth()->user()->can('create-dcr');
+        // Allow if user is authenticated and has author or admin role
+        $user = Auth::user();
+        return $user && ($user->isAuthor() || $user->isAdministrator());
     }
 
     /**
@@ -21,19 +25,32 @@ class ChangeRequestStoreRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'author_id' => ['required', 'exists:users,id'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string', 'min:10'],
-            'reason_for_change' => ['required', 'string', 'min:10'],
-            'request_type' => ['required', 'string', Rule::in(['Standard', 'Emergency', 'Routine', 'Corrective'])],
-            'priority' => ['required', 'string', Rule::in(['Low', 'Medium', 'High', 'Critical'])],
-            'due_date' => ['required', 'date', 'after_or_equal:today'],
+            'reason' => ['required', 'string'], // Map to reason_for_change
+            'request_type' => ['nullable', 'string', Rule::in(['Standard', 'Emergency', 'Routine', 'Corrective'])],
+            'priority' => ['nullable', 'string', Rule::in(['Low', 'Medium', 'High', 'Critical'])],
+            'due_date' => ['nullable', 'date', 'after_or_equal:today'],
             'recipient_id' => ['nullable', 'exists:users,id'],
             'decision_maker_id' => ['nullable', 'exists:users,id'],
+            'status' => ['nullable', 'string'],
+            // Impact analysis fields
+            'cost' => ['nullable', 'numeric', 'min:0'],
+            'weight' => ['nullable', 'numeric'],
+            'tooling' => ['nullable', 'boolean'],
+            'tooling_desc' => ['nullable', 'string', 'required_if:tooling,1'],
+            'inventory_scrap' => ['nullable', 'boolean'],
+            'parts' => ['nullable', 'array'],
+            'parts.*.number' => ['required_with:parts', 'string'],
+            'parts.*.current_rev' => ['nullable', 'string'],
+            'parts.*.new_rev' => ['nullable', 'string'],
+            // Attachments
             'attachments' => ['nullable', 'array', 'max:10'],
             'attachments.*' => [
                 'file',
                 'max:10240', // 10MB max per file
-                'mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,txt,zip,rar',
+                'mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,txt,zip,rar,png,jpg,jpeg,dxf,step,stp',
                 'distinct'
             ],
         ];
@@ -57,6 +74,7 @@ class ChangeRequestStoreRequest extends FormRequest
             'priority.in' => 'The priority must be one of: Low, Medium, High, Critical.',
             'due_date.required' => 'The due date is required.',
             'due_date.after_or_equal' => 'The due date must be today or a future date.',
+            'recipient_id.required' => 'The recipient is required.',
             'recipient_id.exists' => 'The selected recipient is invalid.',
             'decision_maker_id.exists' => 'The selected decision maker is invalid.',
             'attachments.max' => 'You may upload a maximum of 10 files.',
@@ -91,12 +109,46 @@ class ChangeRequestStoreRequest extends FormRequest
     {
         // Auto-populate author_id if not provided
         if (!$this->has('author_id')) {
-            $this->merge(['author_id' => auth()->id()]);
+            $this->merge(['author_id' => Auth::id()]);
         }
 
         // Auto-populate status if not provided
         if (!$this->has('status')) {
             $this->merge(['status' => 'Draft']);
+        }
+
+        // Map 'reason' to 'reason_for_change'
+        if ($this->has('reason')) {
+            $this->merge(['reason_for_change' => $this->input('reason')]);
+        }
+
+        // Set default values
+        if (!$this->has('request_type')) {
+            $this->merge(['request_type' => 'Standard']);
+        }
+        if (!$this->has('priority')) {
+            $this->merge(['priority' => 'Medium']);
+        }
+        if (!$this->has('due_date')) {
+            $this->merge(['due_date' => now()->addDays(14)->format('Y-m-d')]);
+        }
+
+        // Convert checkbox values to boolean
+        if ($this->has('tooling')) {
+            $this->merge(['tooling' => (bool) $this->input('tooling')]);
+        }
+        if ($this->has('inventory_scrap')) {
+            $this->merge(['inventory_scrap' => (bool) $this->input('inventory_scrap')]);
+        }
+
+        // Auto-assign recipient if not provided (find first recipient user)
+        if (!$this->has('recipient_id') || !$this->recipient_id) {
+            $recipient = \App\Models\User::whereHas('roles', function ($query) {
+                $query->where('name', 'Recipient');
+            })->first();
+            if ($recipient) {
+                $this->merge(['recipient_id' => $recipient->id]);
+            }
         }
 
         // Validate recipient and decision maker roles
@@ -118,13 +170,18 @@ class ChangeRequestStoreRequest extends FormRequest
     /**
      * Get the validated data with additional processing.
      */
-    public function validated(): array
+    public function validated($key = null, $default = null): mixed
     {
+        // If requesting a specific key, delegate to parent
+        if ($key !== null) {
+            return parent::validated($key, $default);
+        }
+        
         $validated = parent::validated();
 
         // Generate UUID if not provided
         if (!isset($validated['uuid'])) {
-            $validated['uuid'] = \Str::uuid();
+            $validated['uuid'] = Str::uuid();
         }
 
         // Generate DCR ID if not provided

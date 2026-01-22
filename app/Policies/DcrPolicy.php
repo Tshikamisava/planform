@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Models\Dcr;
+use App\Models\ChangeRequest;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
 
@@ -19,7 +20,7 @@ class DcrPolicy
     /**
      * Determine whether the user can view the model.
      */
-    public function view(User $user, Dcr $dcr): bool
+    public function view(User $user, Dcr|ChangeRequest $dcr): bool
     {
         // Users can view their own DCRs, assigned DCRs, or if they are DOM/Admin
         return $user->id === $dcr->author_id ||
@@ -40,7 +41,7 @@ class DcrPolicy
     /**
      * Determine whether the user can update the model.
      */
-    public function update(User $user, Dcr $dcr): bool
+    public function update(User $user, Dcr|ChangeRequest $dcr): bool
     {
         // Authors can update their own DCRs if they are in draft status
         // Admins can update any DCR
@@ -58,7 +59,7 @@ class DcrPolicy
     /**
      * Determine whether the user can delete the model.
      */
-    public function delete(User $user, Dcr $dcr): bool
+    public function delete(User $user, Dcr|ChangeRequest $dcr): bool
     {
         // Only admins can delete DCRs
         return $user->isAdministrator();
@@ -67,7 +68,7 @@ class DcrPolicy
     /**
      * Determine whether the user can approve the model.
      */
-    public function approve(User $user, Dcr $dcr): bool
+    public function approve(User $user, Dcr|ChangeRequest $dcr): bool
     {
         // Only DOMs can approve DCRs assigned to them or if they are the decision maker
         return ($user->isDecisionMaker() && $user->id === $dcr->decision_maker_id) ||
@@ -77,7 +78,7 @@ class DcrPolicy
     /**
      * Determine whether the user can reject the model.
      */
-    public function reject(User $user, Dcr $dcr): bool
+    public function reject(User $user, Dcr|ChangeRequest $dcr): bool
     {
         return $this->approve($user, $dcr);
     }
@@ -85,7 +86,7 @@ class DcrPolicy
     /**
      * Determine whether the user can complete the model.
      */
-    public function complete(User $user, Dcr $dcr): bool
+    public function complete(User $user, Dcr|ChangeRequest $dcr): bool
     {
         // Only recipients can complete DCRs assigned to them
         return ($user->isRecipient() && $user->id === $dcr->recipient_id) ||
@@ -95,7 +96,7 @@ class DcrPolicy
     /**
      * Determine whether the user can close the model.
      */
-    public function close(User $user, Dcr $dcr): bool
+    public function close(User $user, Dcr|ChangeRequest $dcr): bool
     {
         // Only admins can close DCRs
         return $user->isAdministrator();
@@ -104,7 +105,7 @@ class DcrPolicy
     /**
      * Determine whether the user can add impact assessment.
      */
-    public function addImpactAssessment(User $user, Dcr $dcr): bool
+    public function addImpactAssessment(User $user, Dcr|ChangeRequest $dcr): bool
     {
         // Only DOMs can add impact assessments
         return ($user->isDecisionMaker() && $user->id === $dcr->decision_maker_id) ||
@@ -114,7 +115,7 @@ class DcrPolicy
     /**
      * Determine whether the user can upload documents.
      */
-    public function uploadDocuments(User $user, Dcr $dcr): bool
+    public function uploadDocuments(User $user, Dcr|ChangeRequest $dcr): bool
     {
         // Authors can upload to their own DCRs
         // Recipients can upload to assigned DCRs

@@ -5,16 +5,21 @@
             <div class="flex">
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center">
-                    <a href="{{ route('dashboard') }}">
+                    <a href="{{ Auth::user()->getHomeRoute() }}">
                         <x-application-logo class="block h-9 w-auto fill-current text-gray-800" />
                     </a>
                 </div>
 
                 <!-- Navigation Links -->
                 <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
-                        {{ __('Dashboard') }}
+                    <x-nav-link :href="Auth::user()->getHomeRoute()" :active="request()->url() === Auth::user()->getHomeRoute()">
+                        {{ __('Home') }}
                     </x-nav-link>
+                    @if(Auth::user()->hasRole('dom') || Auth::user()->hasRole('admin'))
+                        <x-nav-link :href="route('dcr.manager.dashboard')" :active="request()->routeIs('dcr.manager.dashboard')">
+                            {{ __('Manager Dashboard') }}
+                        </x-nav-link>
+                    @endif
                 </div>
             </div>
 
@@ -70,6 +75,11 @@
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                 {{ __('Dashboard') }}
             </x-responsive-nav-link>
+            @if(Auth::user()->hasRole('dom') || Auth::user()->hasRole('admin'))
+                <x-responsive-nav-link :href="route('dcr.manager.dashboard')" :active="request()->routeIs('dcr.manager.dashboard')">
+                    {{ __('Manager Dashboard') }}
+                </x-responsive-nav-link>
+            @endif
         </div>
 
         <!-- Responsive Settings Options -->

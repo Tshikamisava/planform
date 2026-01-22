@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Enums\Permission;
 use App\Enums\Role;
 use App\Models\Dcr;
+use App\Models\ChangeRequest;
 use App\Models\User;
 use App\Policies\DcrPolicy;
 use App\Policies\UserPolicy;
@@ -22,6 +23,7 @@ class AuthServiceProvider extends ServiceProvider
      */
     protected $policies = [
         Dcr::class => DcrPolicy::class,
+        ChangeRequest::class => DcrPolicy::class,
         User::class => UserPolicy::class,
         'App\Models\Document' => DocumentPolicy::class,
     ];

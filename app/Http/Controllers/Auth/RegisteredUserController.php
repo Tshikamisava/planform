@@ -33,18 +33,48 @@ class RegisteredUserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'role' => ['required', 'string', 'in:author,recipient,dom,viewer'],
         ]);
 
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
+            'is_active' => true,
+            'email_verified_at' => now(), // Auto-verify for development
         ]);
+
+        // Assign selected role to the user
+        $role = \App\Models\Role::where('name', $request->role)->first();
+        if ($role) {
+            $user->roles()->attach($role->id, [
+                'assigned_by' => null,
+                'assigned_at' => now(),
+                'is_active' => true,
+            ]);
+        }
 
         event(new Registered($user));
 
         Auth::login($user);
 
-        return redirect(route('dashboard', absolute: false));
+        // Redirect based on role
+        $redirectUrl = $this->getRedirectUrlByRole($request->role);
+
+        return redirect($redirectUrl)->with('success', 'Registration successful! Welcome to the DCR system.');
+    }
+
+    /**
+     * Get redirect URL based on user role
+     */
+    private function getRedirectUrlByRole(string $role): string
+    {
+        return match($role) {
+            'author' => route('dcr.create'),
+            'recipient' => route('dcr.my-tasks'),
+            'dom' => route('dcr.pending-approval'),
+            'viewer' => route('dcr.dashboard'),
+            default => route('dashboard'),
+        };
     }
 }
